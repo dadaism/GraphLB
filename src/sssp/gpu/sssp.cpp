@@ -30,6 +30,7 @@ int main(int argc, char* argv[])
         printf("          7 - Unordered + block queue\n");
         printf("          8 - Unordered + thread mapping + queue + delayed buffer\n");
         printf("          9 - Unordered + thread mapping + priority queue\n");
+        printf("         10 - Unordered + thread queue + dynamic parallelism\n");
         printf("device number: start from 0\n");
         exit(0);
     }
@@ -58,7 +59,9 @@ int main(int argc, char* argv[])
 	SSSP_GPU(	graph.vertexArray, graph.edgeArray, graph.weightArray, 
 				graph.costArray, graph.frontier, noNodeTotal, 
 				noEdgeTotal, source );
-	//outputCost();
+#ifdef DEBUG
+	outputCost();
+#endif
 	delete [] graph.vertexArray;
 	delete [] graph.edgeArray;
 	delete [] graph.weightArray;

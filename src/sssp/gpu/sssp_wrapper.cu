@@ -248,7 +248,7 @@ void SSSP_GPU(  int *vertexArray, int *edgeArray, int *weightArray,
 						printf("Too many elements in queue\n");
 						exit(0);	
 					}		
-					unorder_threadQueue_kernel<<<dimGridT, dimBlockT>>>(d_vertexArray, d_edgeArray, d_costArray, 
+					unorder_threadQueue_lb_kernel<<<dimGridT, dimBlockT>>>(d_vertexArray, d_edgeArray, d_costArray, 
 																		d_weightArray, d_update, nodeNumber,
 																		d_workQueue, d_qLength);
 					cudaCheckError( __LINE__, cudaMemset(d_qLength, 0, sizeof(unsigned int)));
@@ -269,7 +269,27 @@ void SSSP_GPU(  int *vertexArray, int *edgeArray, int *weightArray,
 						printf("Too many elements in queue\n");
 						exit(0);
 					}		
-					unorder_threadQueue_lb_kernel<<<dimGridT, dimBlockT>>>(d_vertexArray, d_edgeArray, d_costArray, 
+					unorder_threadQueue_kernel<<<dimGridT, dimBlockT>>>(d_vertexArray, d_edgeArray, d_costArray, 
+																		d_weightArray, d_update, nodeNumber,
+																		d_workQueue, d_qLength);
+					cudaCheckError( __LINE__, cudaMemset(d_qLength, 0, sizeof(unsigned int)));
+					unorder_generateQueue_kernel<<<dimGrid, dimBlock>>>(d_update, nodeNumber, d_workQueue, 
+																		d_qLength, qMaxLength);
+					break;
+			case 10:// unorder+thread queue+dynamic parallelism
+					//printf("Thread+Queue\n");
+					/* Dynamic kernel configuration */
+					if (qLength<=maxDegreeT){
+						dimGridT.x = 1;
+					}
+					else if (qLength<=maxDegreeT*MAXDIMGRID){
+						dimGridT.x = qLength/maxDegreeT+1;
+					}
+					else{
+						printf("Too many elements in queue\n");
+						exit(0);	
+					}		
+					unorder_threadQueue_dp_kernel<<<dimGridT, dimBlockT>>>(d_vertexArray, d_edgeArray, d_costArray, 
 																		d_weightArray, d_update, nodeNumber,
 																		d_workQueue, d_qLength);
 					cudaCheckError( __LINE__, cudaMemset(d_qLength, 0, sizeof(unsigned int)));

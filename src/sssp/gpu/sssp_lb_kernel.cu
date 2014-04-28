@@ -1,8 +1,8 @@
 #ifndef __SSSP_LB_KERNEL__
 #define __SSSP_LB_KERNEL__
 
-#define THREASHOLD 100
-#define BUFF_SIZE 50
+#define THREASHOLD 400
+#define BUFF_SIZE 500
 
 __global__ void unorder_threadQueue_lb_kernel(	int *vertexArray, int *edgeArray, int *costArray, int *weightArray,
 											char *update, int nodeNumber, int *queue,unsigned int *qLength)
@@ -41,7 +41,7 @@ __global__ void unorder_threadQueue_lb_kernel(	int *vertexArray, int *edgeArray,
 	}
 	__syncthreads();
 	// 2nd phase, try block mapping
-	for (int i=0; i<t_idx; ++i) {
+	for (int i=0; i<idx; ++i) {
 		int curr = buffer[i];	//	grab a work from queue, tid is queue index
 		/* get neighbour range */				
 		int start = vertexArray[curr];
@@ -71,9 +71,9 @@ __global__ void unorder_threadQueue_lb_kernel(	int *vertexArray, int *edgeArray,
 *   @param queue_0 queue for vertice with low degree
 *   @param queue_1 queue for vertice with high degree
 */
-__global__ void unorder_generateQueue_lb_kernel(	int *vertexArray, char *update, int nodeNumber, 
-													int *queue_0, unsigned int *qCounter_0, unsigned int qMaxLength_0,
-													int *queue_1, unsigned int *qCounter_1, unsigned int qMaxLength_1)
+__global__ void unorder_gen_multiQueue_kernel(	int *vertexArray, char *update, int nodeNumber, 
+												int *queue_0, unsigned int *qCounter_0, unsigned int qMaxLength_0,
+												int *queue_1, unsigned int *qCounter_1, unsigned int qMaxLength_1)
 {
 	int tid = blockIdx.x *blockDim.x + threadIdx.x;
 	if ( tid<nodeNumber && update[tid] ) {
@@ -94,9 +94,7 @@ __global__ void unorder_generateQueue_lb_kernel(	int *vertexArray, char *update,
 	}
 }
 
-#define LIMIT 100 
 #define NESTED_BLOCK_SIZE 128 
-#define DEBUG
 
 /** @brief neighbor processing kernel launched by dynamic parallelism
 *   @param edgeArray

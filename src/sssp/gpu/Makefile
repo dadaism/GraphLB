@@ -1,6 +1,6 @@
 CC = nvcc
 #CC_FLAGS = --compiler-options '-fopenmp' -Xptxas=-v -arch=sm_20 
-CC_FLAGS = --compiler-options '-fopenmp' -arch=sm_35 -rdc=true -lcudadevrt 
+CC_FLAGS = --compiler-options '-fopenmp' -arch=sm_35 -rdc=true -lcudadevrt -DDEBUG -DTHREASHOLD=400
 
 COMMON = ../../../common
 INC = ../../../common
