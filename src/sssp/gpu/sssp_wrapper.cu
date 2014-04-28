@@ -32,6 +32,7 @@ void SSSP_GPU(  int *vertexArray, int *edgeArray, int *weightArray,
 	int *d_edgeArray;
 	int *d_weightArray;
 	int *d_workQueue;
+	int *d_workQueue_1;
 	int *d_bufferBlock_1024_1024;
 	int *d_bufferBlock_1024;
 	int *d_minValue;
@@ -42,6 +43,8 @@ void SSSP_GPU(  int *vertexArray, int *edgeArray, int *weightArray,
 	char *d_commit;
 	unsigned int *d_qCounter;
 	unsigned int *d_qLength;
+	unsigned int *d_qLength_1;
+
 	dim3 dimGrid(1,1,1);	// thread+bitmap
 	dim3 dimBlock(1,1,1);
 	int maxDegreeB = 32;	
@@ -58,6 +61,10 @@ void SSSP_GPU(  int *vertexArray, int *edgeArray, int *weightArray,
 	int *workQueue = new int [qMaxLength];
 	unsigned int qLength = 0;
 	unsigned int qCounter = 0;
+
+	unsigned int qMaxLength_1 = QMAXLENGTH / 5;
+	int *workQueue_1 = new int [qMaxLength_1];
+	unsigned int qLength_1 = 0;
 
 	double time, end_time;
 	time = gettime();
@@ -104,8 +111,14 @@ void SSSP_GPU(  int *vertexArray, int *edgeArray, int *weightArray,
 	cudaCheckError( __LINE__, cudaMalloc( (void**)&d_workQueue, sizeof(int)*qMaxLength) );
 	cudaCheckError( __LINE__, cudaMalloc( (void**)&d_qCounter, sizeof(unsigned int) ) );
 	cudaCheckError( __LINE__, cudaMalloc( (void**)&d_qLength, sizeof(unsigned int) ) );
-	cudaCheckError( __LINE__, cudaMalloc( (void**)&d_bufferBlock_1024, sizeof(int)*1024 ) );
-	cudaCheckError( __LINE__, cudaMalloc( (void**)&d_bufferBlock_1024_1024, sizeof(int)*1024*1024 ) );	
+	if ( solution<4 ) {
+		cudaCheckError( __LINE__, cudaMalloc( (void**)&d_bufferBlock_1024, sizeof(int)*1024 ) );
+		cudaCheckError( __LINE__, cudaMalloc( (void**)&d_bufferBlock_1024_1024, sizeof(int)*1024*1024 ) );	
+	}
+	if ( solution==9 ) {
+		cudaCheckError( __LINE__, cudaMalloc( (void**)&d_workQueue_1, sizeof(int)*qMaxLength_1) );
+		cudaCheckError( __LINE__, cudaMalloc( (void**)&d_qLength_1, sizeof(unsigned int) ) );
+	}
 	cudaCheckError( __LINE__, cudaMalloc( (void**)&d_minValue, sizeof(int)) );
 	end_time = gettime();
 	printf("cudaMalloc:\t\t%lf\n",end_time-time);
@@ -119,8 +132,10 @@ void SSSP_GPU(  int *vertexArray, int *edgeArray, int *weightArray,
 	cudaCheckError( __LINE__, cudaMemcpy( d_qCounter, &qCounter, sizeof(unsigned int), cudaMemcpyHostToDevice) );
 	cudaCheckError( __LINE__, cudaMemcpy( d_qLength, &qLength, sizeof(unsigned int), cudaMemcpyHostToDevice) );
 	cudaCheckError( __LINE__, cudaMemcpy( d_minValue, &minValue, sizeof(int), cudaMemcpyHostToDevice) );
-
 	cudaCheckError( __LINE__, cudaMemset(d_commit, 0, sizeof(char)*nodeNumber) );
+	if ( solution==9 ) {
+		cudaCheckError( __LINE__, cudaMemcpy( d_qLength_1, &qLength_1, sizeof(unsigned int), cudaMemcpyHostToDevice) );
+	}
 
 	end_time = gettime();
 	printf("cudaMemcpy:\t\t%lf\n",end_time-time);
@@ -142,10 +157,15 @@ void SSSP_GPU(  int *vertexArray, int *edgeArray, int *weightArray,
 		case 4: case 6:
 			generateBitmap_kernel<<<dimGrid, dimBlock>>>(d_frontier, d_update, nodeNumber);
 			break;
-		case 5: case 7: case 8: case 9:
+		case 5: case 7: case 8:
 			unorder_generateQueue_kernel<<<dimGrid, dimBlock>>>(d_update, nodeNumber, d_workQueue, 
 																d_qLength, qMaxLength);
 			cudaCheckError( __LINE__, cudaMemcpy(&qLength,d_qLength,sizeof(unsigned int), cudaMemcpyDeviceToHost));		
+			break;
+		case 9:
+			unorder_gen_multiQueue_kernel<<<dimGrid, dimBlock>>>(d_vertexArray, d_update, nodeNumber, 
+																d_workQueue, d_qLength, qMaxLength,
+																d_workQueue_1, d_qLength_1, qMaxLength_1);
 			break;
 		default:
 			break;
@@ -258,7 +278,7 @@ void SSSP_GPU(  int *vertexArray, int *edgeArray, int *weightArray,
 
 			case 9: // unordered + thread mapping + priority queue
 					//printf("Thread+Queue\n");
-					/* Dynamic kernel configuration */
+					/* Dynamic kernel configuration for thread mapping */
 					if (qLength<=maxDegreeT){
 						dimGridT.x = 1;
 					}
@@ -268,13 +288,31 @@ void SSSP_GPU(  int *vertexArray, int *edgeArray, int *weightArray,
 					else{
 						printf("Too many elements in queue\n");
 						exit(0);
-					}		
+					}
 					unorder_threadQueue_kernel<<<dimGridT, dimBlockT>>>(d_vertexArray, d_edgeArray, d_costArray, 
 																		d_weightArray, d_update, nodeNumber,
 																		d_workQueue, d_qLength);
+					/* Dynamic kernel configuration for thread mapping */
+					if (qLength_1<=MAXDIMGRID){
+						dimGridB.x = qLength_1;
+					}
+					else if (qLength_1<=MAXDIMGRID*1024){
+						dimGridB.x = MAXDIMGRID;
+						dimGridB.y = qLength_1/MAXDIMGRID+1;
+					}
+					else{
+						printf("Too many elements in queue\n");
+						exit(0);
+					}
+					unorder_blockQueue_kernel<<<dimGridB, dimBlockB>>>(	d_vertexArray, d_edgeArray, d_costArray, 
+																		d_weightArray, d_update, nodeNumber,
+																		d_workQueue_1, d_qLength_1);
+
 					cudaCheckError( __LINE__, cudaMemset(d_qLength, 0, sizeof(unsigned int)));
-					unorder_generateQueue_kernel<<<dimGrid, dimBlock>>>(d_update, nodeNumber, d_workQueue, 
-																		d_qLength, qMaxLength);
+					cudaCheckError( __LINE__, cudaMemset(d_qLength_1, 0, sizeof(unsigned int)));
+					unorder_gen_multiQueue_kernel<<<dimGrid, dimBlock>>>(d_vertexArray, d_update, nodeNumber, 
+																d_workQueue, d_qLength, qMaxLength,
+																d_workQueue_1, d_qLength_1, qMaxLength_1);
 					break;
 			case 10:// unorder+thread queue+dynamic parallelism
 					//printf("Thread+Queue\n");
@@ -313,6 +351,10 @@ void SSSP_GPU(  int *vertexArray, int *edgeArray, int *weightArray,
 				cudaCheckError( __LINE__, cudaMemset(d_update, 0, sizeof(char)*nodeNumber) );
 			}
 			cudaCheckError( __LINE__, cudaMemcpy(&qLength,d_qLength,sizeof(unsigned int), cudaMemcpyDeviceToHost));
+			if ( solution==9 ) {
+				cudaCheckError( __LINE__, cudaMemcpy(&qLength_1,d_qLength_1,sizeof(unsigned int), cudaMemcpyDeviceToHost));
+				qLength = qLength + qLength_1;
+			}
 			//printf("Working set size is %d\n", qLength);
 			if (qLength==0)	break;
 		}
